@@ -1,0 +1,19 @@
+/backend/vendor/
+/frontend/node_modules/
+# Variables locales / secrets — utiliser .env.example
+/.env
+/backend/.env
+/backend/.env.dev
+.env.local
+.env.*.local
+/backend/var/
+/backend/public/bundles/
+/backend/config/jwt/*.pem
+!/backend/config/jwt/.gitignore
+.idea/
+.vscode/
+*.log
+.phpunit.cache/
+/coverage/
+/frontend/dist/
+.DS_Store

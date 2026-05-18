@@ -1,0 +1,51 @@
+security:
+    password_hashers:
+        Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface:
+            algorithm: argon2id
+
+    role_hierarchy:
+        ROLE_ANALYSTE: [ ROLE_AUDITEUR ]
+        ROLE_ADMIN: [ ROLE_ANALYSTE, ROLE_AUDITEUR ]
+
+    providers:
+        entity_user_provider:
+            entity:
+                class: App\Entity\User
+                property: email
+
+    firewalls:
+        dev:
+            pattern: ^/(_profiler|_wdt|assets|build)/
+            security: false
+
+        documentation:
+            pattern: ^/api/(docs(\.[^/]+)?|graphql|openapi)
+            lazy: true
+            security: false
+
+        login:
+            pattern: ^/api/login$
+            stateless: true
+            provider: entity_user_provider
+            json_login:
+                check_path: /api/login
+                username_path: email
+                password_path: password
+                success_handler: App\Security\JwtLoginSuccessHandler
+                failure_handler: App\Security\JwtLoginFailureHandler
+
+        api:
+            pattern: ^/api
+            stateless: true
+            provider: entity_user_provider
+            jwt:
+                authenticator: lexik_jwt_authentication.security.jwt_authenticator
+
+    access_control: []
+
+when@test:
+    security:
+        password_hashers:
+            Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface:
+                algorithm: bcrypt
+                cost: 6

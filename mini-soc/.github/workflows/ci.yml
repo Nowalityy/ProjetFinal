@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  phpstan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer:v2
+          coverage: none
+          extensions: mbstring,intl,pdo,pdo_pgsql
+      - run: composer install --no-interaction --no-progress
+      - run: composer run stan
+
+  eslint_frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+
+  frontend_test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run test:coverage
+
+  phpunit:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: minisoc
+          POSTGRES_PASSWORD: minisoc_dev_password
+          POSTGRES_DB: mini_soc_test
+        options: >-
+          --health-cmd="pg_isready -U minisoc -d mini_soc_test"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql://minisoc:minisoc_dev_password@127.0.0.1:5432/mini_soc_test?serverVersion=15&charset=utf8
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer:v2
+          coverage: none
+          extensions: mbstring,intl,pdo,pdo_pgsql
+      - run: composer install --no-interaction --no-progress
+      - run: php bin/console doctrine:migrations:migrate --no-interaction --env=test
+      - run: php bin/console doctrine:fixtures:load --no-interaction --env=test --purge-with-truncate
+      - run: ./vendor/bin/phpunit -c phpunit.dist.xml
+
+  dependency_audits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer:v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Composer audit (backend)
+        working-directory: backend
+        run: |
+          composer install --no-interaction --no-progress
+          composer audit
+      - name: npm audit (frontend)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
+  docker_build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker Compose build sanity check
+        run: docker compose -f docker-compose.yml build backend frontend nginx
+
+  deploy_placeholder:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [phpstan, eslint_frontend, frontend_test, phpunit]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Déploiement (placeholder playbook)
+        run: |
+          echo "Branche principale construite avec succès. Remplace cette étape par Railway, Kubernetes, SCP, etc."

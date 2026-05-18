@@ -1,0 +1,13 @@
+framework:
+    rate_limiter:
+        login_api:
+            policy: sliding_window
+            limit: 10
+            interval: '1 minute'
+            cache_pool: cache.rate_limiter
+
+when@test:
+    framework:
+        rate_limiter:
+            login_api:
+                limit: 10000

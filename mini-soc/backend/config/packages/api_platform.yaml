@@ -1,0 +1,8 @@
+api_platform:
+    title: Mini SOC API
+    description: Dashboard SOC — événements d'authentification, alertes et threat intelligence (projet fil rouge CDA).
+    version: 1.0.0
+    defaults:
+        stateless: true
+        cache_headers:
+            vary: ['Content-Type', 'Authorization', 'Origin']
