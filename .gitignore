@@ -1,0 +1,5 @@
+# Racine dépôt — artéfacts hors mini-soc/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
