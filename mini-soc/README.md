@@ -1,43 +1,58 @@
 # Mini SOC
 
-Projet fil rouge **Symfony 7 + API Platform + JWT + React (Vite/MUI) + PostgreSQL + Docker + GitHub Actions**.
+Console web de supervision léger façon SOC : tableau de bord, alertes, journaux d’accès, profil, exports CSV et administration utilisateurs selon les rôles. Stack : **Symfony 7**, **API Platform**, **JWT (Lexik)**, **React 19 (Vite)**, **PostgreSQL**, **Docker Compose**, **GitHub Actions**.
+
+## Structure du dépôt
+
+```
+mini-soc/
+├── docker-compose.yml    # nginx, frontend, backend, postgres, redis, …
+├── docker/nginx/           # Reverse proxy (/ → Vite dev, /api → PHP)
+├── backend/               # Symfony, API REST, Doctrine, détection / alertes
+├── frontend/              # SPA React (MUI, React Query, Recharts, DataGrid)
+├── docs/                  # Mémo école (.md + PDF optionnel)
+└── .github/workflows/     # CI (PHPStan, PHPUnit, ESLint, Vitest, build Docker)
+```
 
 ## Prérequis
 
-- Docker & Docker Compose (recommandé), ou PHP 8.3 + Node 20+ + PostgreSQL 15.
-- Clés JWT Lexik déjà présentes sous `backend/config/jwt/` (`.pem`).
+- **Docker Engine** et **Compose** (recommandé), ou PHP **8.3+**, Node **20+**, PostgreSQL **15**.
+- Fichiers **`.env`** : à partir des **`.env.example`** (voir plus bas).
+- Paires **`.pem`** Lexik JWT dans `backend/config/jwt/` (ou génération selon la doc Symfony / Lexik — les fichiers réels restent hors dépôt par défaut, voir `.gitignore`).
 
-## Démarrage rapide (Docker)
+## Démarrage rapide avec Docker
 
-À la racine du dossier `mini-soc/` :
+Depuis **`mini-soc/`** :
 
 ```bash
+cp .env.example .env                    # puis ajuster valeurs locales
+cp backend/.env.example backend/.env    # ou fusionner vos variables Doctrine / JWT selon environnement
+
 docker compose up -d --build
 ```
 
-Assurez-vous que votre fichier `.env` à la racine définit notamment `POSTGRES_*`, `DATABASE_URL`, `APP_SECRET` et les chemins JWT.
+Ensuite :
 
-- **Interface** : [http://localhost:8080](http://localhost:8080) (Nginx → Vite + API `/api`)
-- **Vite seul** : [http://localhost:5173](http://localhost:5173) (proxy `/api` → `127.0.0.1:8080` en dev local)
-- **PostgreSQL** : `localhost:5432` (identifiants du `.env`)
+- **Interface principale** : [http://localhost:8080](http://localhost:8080) (Nginx sert la SPA avec `/api` vers le backend).
+- **PostgreSQL** : port **`5432`** (identifiants issus du `.env` racine ou service `database` dans Compose selon votre fichier).
+- Frontend seul (`npm run dev` dans `frontend/` ou service `vite` du compose selon votre config) : souvent **`5173`** — en conteneur, le proxy **`/api`** doit viser une cible joignable (ex. service `nginx` port 8080), pas forcément la loopback du poste.
 
-Variable frontend : `VITE_API_BASE_URL=/api` (recommandé : même origine via Nginx sur le port 8080).
+Variable typique SPA : **`VITE_API_BASE_URL=/api`** quand même origine que l’interface (cas Nginx `:8080`).
 
-- **Accès recommandé** : `http://localhost:8080` (Nginx → Vite + API).
-- Si tu ouvres **`http://localhost:5173`** (Vite seul dans Docker), le proxy `/api` pointe vers le service **`nginx`** via `VITE_PROXY_API_TARGET` (sinon `127.0.0.1:8080` ne serait pas joignable depuis le conteneur).
-
-## Backend
+### Première mise en base de données (hors tout Docker automatisé)
 
 ```bash
 cd backend
 composer install
-php bin/console doctrine:migrations:migrate
+php bin/console doctrine:migrations:migrate --no-interaction
 php bin/console doctrine:fixtures:load --no-interaction --purge-with-truncate
 ```
 
-Compte admin démo (fixtures) : `admin@minisoc.local` / `Admin12345!`
+**Compte démo** (fixtures) : `admin@minisoc.local` / `Admin12345!`
 
-### Connexion JWT (exemple)
+## API & authentification
+
+Obtenir un jeton JWT (exemple avec le compte fixtures) :
 
 ```bash
 curl -s -X POST http://localhost:8080/api/login \
@@ -45,37 +60,75 @@ curl -s -X POST http://localhost:8080/api/login \
   -d '{"email":"admin@minisoc.local","password":"Admin12345!"}'
 ```
 
-Endpoints utiles :
+À noter ensuite dans `Authorization: Bearer …` pour les appels suivants.
 
-- `GET /api/dashboard/stats` (JWT, rôle `ROLE_AUDITEUR`+)
-- Exports CSV : `GET /api/export/logs.csv`, `GET /api/export/alerts.csv` (`ROLE_ANALYSTE`+)
+**Exemples d’entrées utilisées dans l’app** :
 
-## Frontend
+- `GET /api/dashboard/stats` — agrégés pour le tableau de bord (JWT, rôle auditeur ou supérieur).
+- `GET /api/export/logs.csv`, `GET /api/export/alerts.csv` — exports CSV (JWT, Analyste ou supérieur).
+
+La liste exhaustive des routes reste disponible sous **Swagger / docs API Platform** quand ils sont exposés en environnement développement.
+
+## Frontend hors Docker (machine locale)
 
 ```bash
 cd frontend
 npm ci
-npm run dev   # http://localhost:5173
+npm run dev    # défaut http://localhost:5173 ; proxy `/api` selon vite.config.js
 ```
 
-Scripts : `npm run lint`, `npm run test`, `npm run test:coverage`, `npm run build`.
+Scripts usuels :
 
-Stack UI : MUI, React Query, Recharts, DataGrid, thème sombre « SOC ».
+- **`npm run lint`** — ESLint (config projet type Airbnb ESLint legacy).
+- **`npm run test`** / **`npm run test:coverage`** — Vitest.
+- **`npm run build`** — production Vite (`dist/` ignoré par git).
 
-## Stockage IP bloquées & quota AbuseIPDB
+Interface : Material UI (thème sombre type poste SOC), données via **TanStack Query / Axios**.
 
-Conformément à l’implémentation actuelle, **liste d’IP bloquées** et **quota journalier AbuseIPDB** sont stockés en **PostgreSQL** (`blocked_ips`, `abuseip_quota`). Le conteneur Redis reste disponible dans Compose pour d’autres usages mais n’est pas requis par le code PHP pour ces deux fonctions.
+## Données, détection et intégrations
 
-## Qualité & CI
+- Tentatives SSH / HTTP simulées, **alertes** liées aux règles de détection côté services PHP.
+- **AbuseIPDB** : enrichissement facultatif avec clé d’API — cache et quota suivent l’implémentation actuelle stockée principalement dans PostgreSQL.
+- Liste d’IPs bloquées / quota journaliers : persistance prévue conformément aux entités présentes dans le projet (PostgreSQL comme source principale métier décrite dans cette version).
 
-- **PHPStan** : niveau défini dans `backend/phpstan.neon` (actuellement 3 — objectif playbook : monter progressivement).
-- Workflow : `.github/workflows/ci.yml` (PHPStan, PHPUnit + Postgres + fixtures, ESLint Airbnb, Vitest + couverture, audits Composer/npm, build Docker, placeholder de déploiement sur `main`).
+### Rate limiting connexion JSON
 
-## Tests
+Une protection par **Symfony RateLimiter** sur **`/api/login`** limite le débit depuis le monde extérieur (anti-bruteforce sur la route de jeton dédiée).
 
-- Backend : `cd backend && ./vendor/bin/phpunit -c phpunit.dist.xml` (nécessite base de test migrée ; le groupe `integration` peut être ignoré si la base n’est pas prête — certains tests se marquent skipped).
-- Frontend : `npm run test:coverage` (seuil défini dans `vite.config.js`).
+## Qualité logicielle et CI
+
+- **`backend/phpstan.neon`** — analyse statique PHP (niveau ajustable).
+- **`./vendor/bin/phpunit -c phpunit.dist.xml`** — tests PHPUnit (certains peuvent passer en *skipped* si la base ou le jeu de données n’est pas configuré comme attendu dans un environnement local minimal).
+- **`.github/workflows/ci.yml`** — enchaîne sur `push`/`PR` : analyse PHP, PHPUnit avec PostgreSQL dans le job CI, ESLint frontend, Vitest avec couverture, audits Composer/npm légers, montée en container des images `backend`, `frontend`, `nginx`, plus une étape de **notification / déploiement indicateur** sur `main` (à adapter à vos outils Railway, Kubernetes, SCP, …).
+
+## Documentation pour un rendu académique
+
+Dans **`docs/`** :
+
+| Fichier | Description |
+|---------|-------------|
+| `MemoMiniSOC-ecole.md` | Source Markdown narrative (à compléter : auteur et formation dans l’en-tête). |
+| `MemoMiniSOC-ecole.pdf` | Version PDF facultative (voir régénération ci-dessous). |
+
+Pour **régénérer le PDF** après modification du `.md` (avec Docker si **Pandoc + LaTeX** ne sont pas installés localement) :
+
+```bash
+# depuis mini-soc/
+docker run --rm -v "$(pwd)/docs:/docs" pandoc/latex:latest \
+  /docs/MemoMiniSOC-ecole.md -o /docs/MemoMiniSOC-ecole.pdf
+```
+
+Le propriétaire du fichier créé peut être **`root:root`** suivant votre moteur Docker ; un `sudo chown` permet de corriger sur la machine de développement.
+
+## Environnement de variables
+
+| Fichier | Rôle |
+|---------|------|
+| `.env.example` | Modèle Postgres, chemins JWT, AbuseIPDB, Redis d’infra Compose, etc. |
+| `backend/.env.example` | Paramètres Symfony locaux (Doctrine, CORS, messagerie…). |
+
+Ne **commitez jamais** de vrais secrets : copiez les exemples vers des fichiers ignorés **`.env`** et **`backend/.env`**.
 
 ---
 
-Pour le détail fonctionnel attendu du fil rouge, se référer au playbook du dépôt parent.
+*Application de formation / POC — aucune donnée de production.*

@@ -125,6 +125,6 @@ jobs:
     needs: [phpstan, eslint_frontend, frontend_test, phpunit]
     runs-on: ubuntu-latest
     steps:
-      - name: Déploiement (placeholder playbook)
+      - name: Déploiement (étape indicative)
         run: |
           echo "Branche principale construite avec succès. Remplace cette étape par Railway, Kubernetes, SCP, etc."

@@ -17,7 +17,7 @@ use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Persistence\ObjectManager;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
-/** Données de démo alignées playbook (RGPD + scénarios de détection). */
+/** Données de démo avec scénarios de détection (RGPD-compatible). */
 class AppFixtures extends Fixture
 {
     private const DEMO_PASSWORD = 'Admin12345!';
